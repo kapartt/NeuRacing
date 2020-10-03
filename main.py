@@ -68,9 +68,9 @@ def get_acceleration():
 
 
 def get_delta_angle():
-    if flag_left:
+    if flag_left and flag_up and velocity > 0 or flag_right and flag_down and velocity < 0:
         return delta_angle_turn
-    elif flag_right:
+    elif flag_left and flag_down and velocity < 0 or flag_right and flag_up and velocity > 0:
         return -delta_angle_turn
     return 0
 
@@ -127,6 +127,15 @@ while True:
                 flag_left = False
             if event.key == pygame.K_RIGHT:
                 flag_right = False
+
+    if flag_up and not (flag_right or flag_left or flag_down):
+        state_label = 'Gas'
+    if flag_right and not (flag_up or flag_left or flag_down):
+        state_label = 'Right'
+    if flag_left and not (flag_right or flag_up or flag_down):
+        state_label = 'Left'
+    if flag_down and not (flag_up or flag_left or flag_right):
+        state_label = 'Break'
 
     acceleration = get_acceleration()
     velocity += acceleration
