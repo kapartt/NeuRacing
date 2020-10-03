@@ -68,9 +68,9 @@ def get_acceleration():
 
 
 def get_delta_angle():
-    if flag_left and flag_up and velocity > 0 or flag_right and flag_down and velocity < 0:
+    if flag_left and velocity > 0 or flag_right and velocity < 0:
         return delta_angle_turn
-    elif flag_left and flag_down and velocity < 0 or flag_right and flag_up and velocity > 0:
+    elif flag_left and velocity < 0 or flag_right and velocity > 0:
         return -delta_angle_turn
     return 0
 
