@@ -8,25 +8,26 @@ car_dir = 'img/car.jpg'
 heading = 'NeuRacing'
 GRAY = (220, 220, 220)
 BLACK = (0, 0, 0)
-start_x = 358.26271662491143
-start_y = 107.887105126521
+screen_scale = 1.5
+start_x = 358.26271662491143 * screen_scale
+start_y = 107.887105126521 * screen_scale
 border_dx = 5
 border_dy = 5
 angle_start = -174.4
 polar_angle_start = -264.4
-rectangle_width = 100
-rectangle_height = 30
+rectangle_width = int(100 * screen_scale)
+rectangle_height = int(30 * screen_scale)
 font_name = 'freesansbold.ttf'
-font_size = 18
+font_size = int(18 * screen_scale)
 
 # Physics
 delta_angle_turn = 0.5
-min_velocity = -1
-max_velocity = 5
-acceleration_gas = 0.003
-acceleration_break = -0.005
-acceleration_reverse = -0.003
-friction_mu = 0.001
+min_velocity = -1 * screen_scale
+max_velocity = 5 * screen_scale
+acceleration_gas = 0.003 * screen_scale
+acceleration_break = -0.005 * screen_scale
+acceleration_reverse = -0.003 * screen_scale
+friction_mu = 0.001 * screen_scale
 
 pygame.init()
 pygame.display.set_caption(heading)
@@ -34,12 +35,14 @@ icon_img = pygame.image.load(icon_dir)
 pygame.display.set_icon(icon_img)
 
 track_img = pygame.image.load(track_dir)
-screen_width = track_img.get_width()
-screen_height = track_img.get_height()
+screen_width = int(track_img.get_width() * screen_scale)
+screen_height = int(track_img.get_height() * screen_scale)
 screen = pygame.display.set_mode((screen_width, screen_height))
+scale_track = pygame.transform.scale(track_img, (screen_width, screen_height))
 
 car_img = pygame.image.load(car_dir)
-scale = pygame.transform.scale(car_img, (car_img.get_width() // 8, car_img.get_height() // 8))
+scale_car = pygame.transform.scale(car_img, (int(car_img.get_width() // 8 * screen_scale),
+                                         int(car_img.get_height() // 8 * screen_scale)))
 
 car_x = start_x
 car_y = start_y
@@ -73,8 +76,8 @@ def get_delta_angle():
 
 
 def update_screen():
-    screen.blit(track_img, (0, 0))
-    rot = pygame.transform.rotate(scale, angle)
+    screen.blit(scale_track, (0, 0))
+    rot = pygame.transform.rotate(scale_car, angle)
     rot_rect = rot.get_rect(center=(int(car_x), int(car_y)))
     screen.blit(rot, rot_rect)
 
