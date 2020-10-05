@@ -5,7 +5,7 @@ from ai import utils
 class NeuralNetwork:
     def __init__(self, layers: tuple = (), input_sz: int = 1, output_sz: int = 1, bias: bool = False,
                  max_w_value: float = 0.1, learning_rate: float = 0.1, lamda: float = 0,
-                 dropout: float = 0, file_name: str = None):
+                 dropout: float = 0, max_mutate: float = 0.001, file_name: str = None, mutate: bool = False):
         self.layers = layers
         self.input_sz = input_sz
         self.output_sz = output_sz
@@ -14,6 +14,7 @@ class NeuralNetwork:
         self.delta = []
         self.lamda = lamda
         self.dropout = dropout
+        self.max_mutate = max_mutate
         if file_name is None:
             self.layers = layers
             self.input_sz = input_sz
@@ -44,7 +45,7 @@ class NeuralNetwork:
                 self.bias = False
             else:
                 self.bias = True
-            self.learning_rate, self.lamda, self.dropout = map(float, f.readline().rstrip().split(';'))
+            self.learning_rate, self.lamda, self.dropout, self.max_mutate = map(float, f.readline().rstrip().split(';'))
             ln = f.readline().rstrip()
             if len(ln) > 0:
                 self.layers = tuple(map(int, ln.split(';')))
@@ -61,6 +62,9 @@ class NeuralNetwork:
                         d = list(map(float, ln.split(';')))
                     else:
                         d = []
+                    if mutate:
+                        for i in range(len(d)):
+                            d[i] += max_mutate * (2 * random() - 1)
                     w.append(d)
                 self.weights.append(w)
 
@@ -70,7 +74,7 @@ class NeuralNetwork:
         if self.bias:
             b = 1
         print(self.input_sz, self.output_sz, b, sep=';', file=f)
-        print(self.learning_rate, self.lamda, self.dropout, sep=';', file=f)
+        print(self.learning_rate, self.lamda, self.dropout, self.max_mutate, sep=';', file=f)
         print(*self.layers, sep=';', file=f)
         for lay in range(len(self.layers) + 1):
             sz_1 = self.output_sz
