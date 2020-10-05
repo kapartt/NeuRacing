@@ -12,7 +12,7 @@ colors = {'TRACK': (179, 179, 179, 255), 'GRAVE': (100, 110, 100, 255), 'GRASS':
           'GRAY': (220, 220, 220, 255), 'CURB_': (190, 100, 100, 255)}
 screen_colors = {'RED': (255, 0, 0, 255), 'GREEN': (0, 255, 0, 255)}
 screen_scale = 1.5
-start_x = 355 * screen_scale
+start_x = 362 * screen_scale
 start_y = 108 * screen_scale
 border_dx = 5
 border_dy = 5
@@ -21,9 +21,9 @@ polar_angle_start = -264.4
 rectangle_width = int(100 * screen_scale)
 rectangle_height = int(30 * screen_scale)
 font_name = 'freesansbold.ttf'
-font_size = int(18 * screen_scale)
-checkpoints = [[(557, 120), (563, 200)], [(650, 81), (691, 147)], [(789, 76), (800, 170)],
-               [(902, 32), (925, 104)], [(1012, 18), (1000, 99)], [(1097, 124), (1017, 125)],
+font_size = int(14 * screen_scale)
+checkpoints = [[(557, 120), (563, 200)], [(650, 81), (650, 197)], [(789, 76), (800, 170)],
+               [(1012, 18), (1000, 99)], [(1097, 124), (1017, 125)],
                [(1047, 214), (1017, 125)], [(943, 132), (935, 210)], [(827, 161), (883, 225)],
                [(804, 266), (880, 230)], [(877, 322), (958, 290)], [(868, 337), (935, 389)],
                [(834, 340), (838, 429)], [(715, 304), (672, 373)], [(597, 241), (558, 311)],
@@ -55,8 +55,8 @@ screen = pygame.display.set_mode((screen_width, screen_height))
 scale_track = pygame.transform.scale(track_img, (screen_width, screen_height))
 
 car_img = pygame.image.load(car_dir)
-scale_car = pygame.transform.scale(car_img, (int(car_img.get_width() // 8 * screen_scale),
-                                             int(car_img.get_height() // 8 * screen_scale)))
+scale_car = pygame.transform.scale(car_img, (int(car_img.get_width() // 16 * screen_scale),
+                                             int(car_img.get_height() // 16 * screen_scale)))
 
 car_x = start_x
 car_y = start_y
@@ -79,6 +79,30 @@ for ch in checkpoints:
 seconds = 0
 minutes = 0
 hours = 0
+epoch = 0
+i_net = 0
+health = 0
+max_health = 200
+n_epoch = 1000
+n_population = 10
+n_best_nets = 3
+n_children = n_population // n_best_nets
+n_new_nets = n_population % n_best_nets
+best_net_dir = 'best_{0}.txt'
+is_human = False
+
+
+def init_state():
+    global car_x, car_y, angle, polar_angle, velocity, cur_checkpoint, checkpoints_colors
+    car_x = start_x
+    car_y = start_y
+    angle = angle_start
+    polar_angle = polar_angle_start
+    velocity = 0
+    cur_checkpoint = 0
+    checkpoints_colors = []
+    for _ in checkpoints:
+        checkpoints_colors.append('RED')
 
 
 def get_acceleration() -> float:
@@ -132,8 +156,8 @@ def get_distance_by_direction(dl: float, alpha: float) -> int:
 
 
 def get_distances() -> list:
-    car_a = 11
-    car_b = 24
+    car_a = 5
+    car_b = 12
     car_c = math.sqrt(car_a * car_a + car_b * car_b)
     alpha = math.atan(car_a / car_b) * 180 / math.pi
     left_backward = get_distance_by_direction(car_c, polar_angle + 180 - alpha)
@@ -149,8 +173,8 @@ def get_distances() -> list:
 def update_checkpoints():
     global cur_checkpoint
     abc = checkpoints_eq_abc[cur_checkpoint]
-    x = car_x + 24 * math.sin(polar_angle * math.pi / 180)
-    y = car_y + 24 * math.cos(polar_angle * math.pi / 180)
+    x = car_x + 12 * math.sin(polar_angle * math.pi / 180)
+    y = car_y + 12 * math.cos(polar_angle * math.pi / 180)
     dist = abs(abc[0] * x + abc[1] * y + abc[2]) / math.sqrt(abc[0] * abc[0] + abc[1] * abc[1])
     x_0 = checkpoints[cur_checkpoint][0][0]
     y_0 = checkpoints[cur_checkpoint][0][1]
@@ -210,10 +234,26 @@ def update_screen():
     pygame.draw.rect(screen, colors['GRAY'], (screen_width - rectangle_width, screen_height - 2 * rectangle_height,
                                               rectangle_width, rectangle_height))
     font_velocity = pygame.font.Font(font_name, font_size)
-    text_velocity = font_velocity.render("%.0f km/h" % (100 * abs(velocity)), True, (0, 0, 0))
+    text_velocity = font_velocity.render("%.0f km/h" % (100 * abs(velocity)), True, colors['BLACK'])
     text_velocity_rect = text_velocity.get_rect()
     text_velocity_rect.center = (screen_width - rectangle_width // 2, screen_height - (3 * rectangle_height) // 2)
     screen.blit(text_velocity, text_velocity_rect)
+
+    pygame.draw.rect(screen, colors['GRAY'], (screen_width - rectangle_width, screen_height - 3 * rectangle_height,
+                                              rectangle_width, rectangle_height))
+    font_health = pygame.font.Font(font_name, font_size)
+    text_health = font_health.render("health=%d" % int(health), True, colors['BLACK'])
+    text_health_rect = text_health.get_rect()
+    text_health_rect.center = (screen_width - rectangle_width // 2, screen_height - (5 * rectangle_height) // 2)
+    screen.blit(text_health, text_health_rect)
+
+    pygame.draw.rect(screen, colors['GRAY'], (screen_width - rectangle_width, screen_height - 4 * rectangle_height,
+                                              rectangle_width, rectangle_height))
+    font_epoch = pygame.font.Font(font_name, font_size)
+    text_epoch = font_epoch.render("ep=%d net=%d" % (epoch, i_net), True, colors['BLACK'])
+    text_epoch_rect = text_epoch.get_rect()
+    text_epoch_rect.center = (screen_width - rectangle_width // 2, screen_height - (7 * rectangle_height) // 2)
+    screen.blit(text_epoch, text_epoch_rect)
 
     pygame.display.update()
 
@@ -226,9 +266,10 @@ def update_flags(x: int):
     flag_right = (x % 3 == 2)
 
 
-def do_action(ac: int):
+def do_action(ac: int, need_update_flags: bool = True):
     global velocity, polar_angle, angle, car_x, car_y
-    update_flags(ac)
+    if need_update_flags:
+        update_flags(ac)
     acceleration = get_acceleration()
     velocity += acceleration
     friction_mu = get_friction()
@@ -278,35 +319,42 @@ def get_state_label() -> str:
     return state_label
 
 
-layers = tuple([4])
-net = nn.NeuralNetwork(layers=layers, input_sz=8, output_sz=1, bias=True)
-prev_checkpoint = 0
-is_human = False
-
-while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+def check_events():
+    for ev in pygame.event.get():
+        if ev.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
-                flag_up = True
-            if event.key == pygame.K_DOWN:
-                flag_down = True
-            if event.key == pygame.K_LEFT:
-                flag_left = True
-            if event.key == pygame.K_RIGHT:
-                flag_right = True
-        if event.type == pygame.KEYUP:
-            if event.key == pygame.K_UP:
-                flag_up = False
-            if event.key == pygame.K_DOWN:
-                flag_down = False
-            if event.key == pygame.K_LEFT:
-                flag_left = False
-            if event.key == pygame.K_RIGHT:
-                flag_right = False
-    if is_human:
+
+
+layers = tuple([5, 3])
+input_sz = 8
+output_sz = 1
+bias = True
+
+if is_human:
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    flag_up = True
+                if event.key == pygame.K_DOWN:
+                    flag_down = True
+                if event.key == pygame.K_LEFT:
+                    flag_left = True
+                if event.key == pygame.K_RIGHT:
+                    flag_right = True
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_UP:
+                    flag_up = False
+                if event.key == pygame.K_DOWN:
+                    flag_down = False
+                if event.key == pygame.K_LEFT:
+                    flag_left = False
+                if event.key == pygame.K_RIGHT:
+                    flag_right = False
         act = 4
         if flag_left:
             act = 3
@@ -326,44 +374,83 @@ while True:
                 act = 2
             else:
                 act = 1
-    else:
-        old_x = car_x
-        old_y = car_y
-        old_velocity = velocity
-        old_angle = angle
-        old_polar_angle = polar_angle
-        q_values = []
-        for action in range(9):
-            do_action(action)
-            net_input = get_distances()
-            for i in range(len(net_input)):
-                net_input[i] *= 0.01
-            net_input.append(velocity)
-            net_output = net.get_output(net_input)
-            q_values.append(net_output[0])
-            car_x = old_x
-            car_y = old_y
-            velocity = old_velocity
-            angle = old_angle
-            polar_angle = old_polar_angle
-        act = q_values.index(max(q_values))
-        update_checkpoints()
-        reward = 0
-        if prev_checkpoint != cur_checkpoint:
-            reward += 1
-            prev_checkpoint = cur_checkpoint
-        net_input = get_distances()
-        for i in range(len(net_input)):
-            net_input[i] *= 0.01
-        net_input.append(velocity)
-        if min(net_input[:-1]) == 0:
-            reward -= 1
-        if net_input[-1] <= 0:
-            reward -= 0.5
-        q_old = q_values[act]
-        q_new = [(1 - net.learning_rate) * q_old + net.learning_rate * (reward + q_old)]
-        net.back_propagation(net_input, q_new)
-        q_new_new = net.get_output(net_input)
-
-    do_action(act)
-    update_screen()
+        do_action(act, False)
+        update_screen()
+else:
+    for epoch in range(n_epoch):
+        nets = []
+        if epoch == 0:
+            for i in range(n_population):
+                nets.append(nn.NeuralNetwork(layers, input_sz, output_sz, bias))
+        else:
+            for bn in range(n_best_nets):
+                nets.append(nn.NeuralNetwork(file_name=best_net_dir.format(bn), mutate=False))
+                for ch in range(n_children - 1):
+                    nets.append(nn.NeuralNetwork(file_name=best_net_dir.format(bn), mutate=True))
+            for new_nn in range(n_new_nets):
+                nets.append(nn.NeuralNetwork(layers, input_sz, output_sz, bias))
+        times = []
+        for i_net in range(len(nets)):
+            cur_net = i_net + 1
+            net = nets[i_net]
+            health = max_health
+            checkpoint_reward = 100
+            minus_health_by_tick = 0.01
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+            init_state()
+            update_screen()
+            t = 0
+            prev_checkpoint = 0
+            while health > 0:
+                t1 = pygame.time.get_ticks()
+                old_x = car_x
+                old_y = car_y
+                old_velocity = velocity
+                old_angle = angle
+                old_polar_angle = polar_angle
+                q_values = []
+                for action in range(9):
+                    do_action(action)
+                    net_input = get_distances()
+                    for i in range(len(net_input)):
+                        net_input[i] *= 0.01
+                    net_input.append(velocity)
+                    net_output = net.get_output(net_input)
+                    q_values.append(net_output[0])
+                    car_x = old_x
+                    car_y = old_y
+                    velocity = old_velocity
+                    angle = old_angle
+                    polar_angle = old_polar_angle
+                act = q_values.index(max(q_values))
+                update_checkpoints()
+                reward = 0
+                if prev_checkpoint != cur_checkpoint:
+                    health = max_health
+                    reward = 1
+                    prev_checkpoint = cur_checkpoint
+                net_input = get_distances()
+                for i in range(len(net_input)):
+                    net_input[i] *= 0.01
+                net_input.append(velocity)
+                t2 = pygame.time.get_ticks()
+                if min(net_input[:-1]) == 0:
+                    reward = -1
+                    health = 0
+                q_old = q_values[act]
+                q_new = [(1 - net.learning_rate) * q_old + net.learning_rate * (reward + q_old)]
+                net.back_propagation(net_input, q_new)
+                health -= (t2 - t1) * minus_health_by_tick
+                t += t2 - t1
+                health = max(health, 0)
+                do_action(act)
+                check_events()
+                update_screen()
+            pygame.time.wait(1000)
+            times.append([i_net, t])
+        times.sort(key=lambda q: q[1], reverse=True)
+        for bn in range(n_best_nets):
+            nets[times[bn][0]].save(best_net_dir.format(bn))
