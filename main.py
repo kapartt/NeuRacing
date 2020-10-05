@@ -6,11 +6,13 @@ icon_dir = 'img/icon.png'
 track_dir = 'img/map.png'
 car_dir = 'img/car.jpg'
 heading = 'NeuRacing'
-GRAY = (220, 220, 220)
-BLACK = (0, 0, 0)
+colors = {'TRACK': (179, 179, 179, 255), 'GRAVE': (100, 110, 100, 255), 'GRASS': (50, 100, 50, 255),
+          'WHITE': (255, 255, 255, 255), 'CURB': (117, 70, 70, 255), 'BLACK': (0, 0, 0, 255),
+          'GRAY': (220, 220, 220, 255), 'CURB_': (190, 100, 100, 255)}
+screen_colors = {'RED': (255, 0, 0, 255), 'GREEN': (0, 255, 0, 255)}
 screen_scale = 1.5
-start_x = 358.26271662491143 * screen_scale
-start_y = 107.887105126521 * screen_scale
+start_x = 355 * screen_scale
+start_y = 108 * screen_scale
 border_dx = 5
 border_dy = 5
 angle_start = -174.4
@@ -19,15 +21,26 @@ rectangle_width = int(100 * screen_scale)
 rectangle_height = int(30 * screen_scale)
 font_name = 'freesansbold.ttf'
 font_size = int(18 * screen_scale)
+checkpoints = [[(557, 120), (563, 200)], [(650, 81), (691, 147)], [(789, 76), (800, 170)],
+               [(902, 32), (925, 104)], [(1012, 18), (1000, 99)], [(1097, 124), (1017, 125)],
+               [(1047, 214), (1017, 125)], [(943, 132), (935, 210)], [(802, 201), (883, 225)],
+               [(804, 266), (880, 230)], [(877, 322), (958, 290)], [(868, 337), (935, 389)],
+               [(834, 340), (838, 429)], [(715, 304), (672, 373)], [(597, 241), (558, 311)],
+               [(454, 232), (510, 299)], [(440, 355), (515, 310)], [(518, 420), (599, 392)],
+               [(528, 453), (596, 500)], [(507, 460), (462, 530)], [(407, 346), (347, 403)],
+               [(264, 287), (258, 371)], [(148, 311), (128, 394)], [(82, 265), (5, 297)],
+               [(88, 244), (17, 197)], [(110, 211), (67, 126)], [(114, 219), (180, 132)],
+               [(192, 270), (200, 180)], [(344, 221), (323, 140)], [(555, 122), (561, 202)]]
 
 # Physics
-delta_angle_turn = 0.5
+delta_angle_turn = 1
 min_velocity = -1 * screen_scale
 max_velocity = 5 * screen_scale
 acceleration_gas = 0.003 * screen_scale
 acceleration_break = -0.005 * screen_scale
 acceleration_reverse = -0.003 * screen_scale
-friction_mu = 0.001 * screen_scale
+frictions = {'TRACK': 0.001, 'GRAVE': 0.001, 'GRASS': 0.001, 'WHITE': 0.001, 'CURB': 0.001, 'BLACK': 0.001,
+             'FINISH': 0.001, 'ALMOST BLACK': 0.001, 'GRAY': 0.001, 'CURB_': 0.001}
 
 pygame.init()
 pygame.display.set_caption(heading)
@@ -42,7 +55,7 @@ scale_track = pygame.transform.scale(track_img, (screen_width, screen_height))
 
 car_img = pygame.image.load(car_dir)
 scale_car = pygame.transform.scale(car_img, (int(car_img.get_width() // 8 * screen_scale),
-                                         int(car_img.get_height() // 8 * screen_scale)))
+                                             int(car_img.get_height() // 8 * screen_scale)))
 
 car_x = start_x
 car_y = start_y
@@ -55,9 +68,21 @@ flag_up = False
 flag_down = False
 flag_left = False
 flag_right = False
+cur_checkpoint = 0
+checkpoints_eq_abc = []
+checkpoints_colors = []
+for ch in checkpoints:
+    checkpoints_colors.append('RED')
+    a = ch[0][1] - ch[1][1]
+    b = ch[1][0] - ch[0][0]
+    c = - a * ch[0][0] - b * ch[0][1]
+    checkpoints_eq_abc.append((a, b, c))
+seconds = 0
+minutes = 0
+hours = 0
 
 
-def get_acceleration():
+def get_acceleration() -> float:
     if flag_down:
         if velocity > 0:
             return acceleration_break
@@ -67,7 +92,15 @@ def get_acceleration():
     return 0
 
 
-def get_delta_angle():
+def get_surface(x: float, y: float) -> str:
+    color = scale_track.get_at((int(x), int(y)))
+    if abs(color[0] - color[1]) < 5 and abs(color[0] - color[1]) < 5 and abs(color[0] - color[1]) < 5:
+        return 'TRACK'
+    errors = [(col, sum([(color[i] - colors[col][i]) ** 2 for i in range(4)])) for col in colors]
+    return min(errors, key=lambda q: q[1])[0]
+
+
+def get_delta_angle() -> float:
     if flag_left and velocity > 0 or flag_right and velocity < 0:
         return delta_angle_turn
     elif flag_left and velocity < 0 or flag_right and velocity > 0:
@@ -75,22 +108,105 @@ def get_delta_angle():
     return 0
 
 
+def get_friction() -> float:
+    return frictions[get_surface(car_x, car_y)] * screen_scale
+
+
+def get_distance_by_direction(dl: float, alpha: float) -> int:
+    dist = 0
+    max_dist = 500
+    x0 = car_x + dl * math.sin(alpha)
+    y0 = car_y + dl * math.cos(alpha)
+    while True:
+        x = x0 + dist * math.sin(alpha)
+        y = y0 + dist * math.cos(alpha)
+        if not (0 <= x < screen_width and 0 <= y < screen_height):
+            return dist
+        surface = get_surface(x, y)
+        if surface == 'GRASS' or surface == 'GRAVE':
+            break
+        dist += 1
+        if dist >= max_dist:
+            break
+    return dist
+
+
+def get_distances() -> list:
+    car_a = 11
+    car_b = 24
+    car_c = math.sqrt(car_a * car_a + car_b * car_b)
+    alpha = math.atan(car_a / car_b)
+    left = get_distance_by_direction(car_a, polar_angle_degree + 90)
+    left_forward = get_distance_by_direction(car_c, polar_angle_degree + alpha)
+    forward = get_distance_by_direction(car_b, polar_angle_degree)
+    right_forward = get_distance_by_direction(car_c, polar_angle_degree - alpha)
+    right = get_distance_by_direction(car_a, polar_angle_degree - 90)
+    return [left, left_forward, forward, right_forward, right]
+
+
+def update_checkpoints():
+    global cur_checkpoint
+    abc = checkpoints_eq_abc[cur_checkpoint]
+    x = car_x + 24 * math.sin(polar_angle_degree)
+    y = car_y + 24 * math.cos(polar_angle_degree)
+    dist = abs(abc[0] * x + abc[1] * y + abc[2]) / math.sqrt(abc[0] * abc[0] + abc[1] * abc[1])
+    x_0 = checkpoints[cur_checkpoint][0][0]
+    y_0 = checkpoints[cur_checkpoint][0][1]
+    x_1 = checkpoints[cur_checkpoint][1][0]
+    y_1 = checkpoints[cur_checkpoint][1][1]
+    if dist < 2 and (x_0 - x) * (x_1 - x) < 2 and (y_0 - y) * (y_1 - y) < 2:
+        checkpoints_colors[cur_checkpoint] = 'GREEN'
+        cur_checkpoint += 1
+        if cur_checkpoint == len(checkpoints):
+            cur_checkpoint = 0
+            for i in range(len(checkpoints_colors)):
+                checkpoints_colors[i] = 'RED'
+
+
+def update_time(ticks: int) -> bool:
+    global hours, minutes, seconds
+    next_ticks = 3600000 * hours + 60000 * minutes + 1000 * (seconds + 1)
+    if ticks > next_ticks:
+        seconds += 1
+        if seconds == 60:
+            seconds = 0
+            minutes += 1
+            if minutes == 60:
+                minutes = 0
+                hours += 1
+        return True
+    return False
+
+
 def update_screen():
+    if update_time(pygame.time.get_ticks()):
+        s = str(hours) + ':'
+        if minutes < 10:
+            s += '0'
+        s += str(minutes) + ':'
+        if seconds < 10:
+            s += '0'
+        s += str(seconds)
+    #    print(s)
     screen.blit(scale_track, (0, 0))
+    update_checkpoints()
+    for i in range(len(checkpoints)):
+        chp = checkpoints[i]
+        pygame.draw.line(screen, screen_colors[checkpoints_colors[i]], chp[0], chp[1], 2)
     rot = pygame.transform.rotate(scale_car, angle)
     rot_rect = rot.get_rect(center=(int(car_x), int(car_y)))
     screen.blit(rot, rot_rect)
 
-    pygame.draw.rect(screen, GRAY, (screen_width - rectangle_width, screen_height - rectangle_height,
-                                    rectangle_width, rectangle_height))
+    pygame.draw.rect(screen, colors['GRAY'], (screen_width - rectangle_width, screen_height - rectangle_height,
+                                              rectangle_width, rectangle_height))
     font_state = pygame.font.Font(font_name, font_size)
-    text_state = font_state.render(state_label, True, BLACK)
+    text_state = font_state.render(state_label, True, colors['BLACK'])
     text_state_rect = text_state.get_rect()
     text_state_rect.center = (screen_width - rectangle_width // 2, screen_height - rectangle_height // 2)
     screen.blit(text_state, text_state_rect)
 
-    pygame.draw.rect(screen, GRAY, (screen_width - rectangle_width, screen_height - 2 * rectangle_height,
-                                    rectangle_width, rectangle_height))
+    pygame.draw.rect(screen, colors['GRAY'], (screen_width - rectangle_width, screen_height - 2 * rectangle_height,
+                                              rectangle_width, rectangle_height))
     font_velocity = pygame.font.Font(font_name, font_size)
     text_velocity = font_velocity.render("%.0f km/h" % (100 * abs(velocity)), True, (0, 0, 0))
     text_velocity_rect = text_velocity.get_rect()
@@ -139,6 +255,7 @@ while True:
 
     acceleration = get_acceleration()
     velocity += acceleration
+    friction_mu = get_friction()
     if velocity > 0:
         velocity = max(velocity - friction_mu, 0)
     elif velocity < 0:
