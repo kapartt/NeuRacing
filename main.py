@@ -1,6 +1,7 @@
 import math
 import pygame
 import sys
+from ai import nn
 
 icon_dir = 'img/icon.png'
 track_dir = 'img/map.png'
@@ -218,6 +219,48 @@ def update_screen():
     pygame.display.update()
 
 
+def update_flags(x: int):
+    global flag_up, flag_down, flag_left, flag_right
+    flag_up = (x < 3)
+    flag_down = (x > 5)
+    flag_left = (x % 3 == 0)
+    flag_right = (x % 3 == 2)
+
+
+def do_action(ac: int):
+    global velocity, polar_angle, angle, car_x, car_y, state_label
+    update_flags(ac)
+    acceleration = get_acceleration()
+    velocity += acceleration
+    friction_mu = get_friction()
+    if velocity > 0:
+        velocity = max(velocity - friction_mu, 0)
+    elif velocity < 0:
+        velocity = min(velocity + friction_mu, 0)
+    if velocity == 0 and acceleration == 0:
+        state_label = 'Stop'
+    if velocity < 0:
+        state_label = 'Reverse'
+    velocity = max(min(max_velocity, velocity), min_velocity)
+
+    delta_angle = get_delta_angle()
+    polar_angle += delta_angle
+    angle += delta_angle
+    polar_angle_rad = polar_angle * math.pi / 180
+
+    car_x += velocity * math.sin(polar_angle_rad)
+    car_y += velocity * math.cos(polar_angle_rad)
+
+    if not (border_dx <= car_x <= screen_width - border_dx and border_dy <= car_y <= screen_height - border_dy):
+        velocity = 0
+        car_x = max(min(screen_width - border_dx, car_x), border_dx)
+        car_y = max(min(screen_height - border_dy, car_y), border_dy)
+
+
+layers = tuple([4])
+net = nn.NeuralNetwork(layers=layers, input_sz=8, output_sz=1, bias=True)
+prev_checkpoint = 0
+is_human = False
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -245,6 +288,67 @@ while True:
                 flag_left = False
             if event.key == pygame.K_RIGHT:
                 flag_right = False
+    if is_human:
+        act = 4
+        if flag_left:
+            act = 3
+        elif flag_right:
+            act = 5
+        if flag_down:
+            if flag_left:
+                act = 6
+            elif flag_right:
+                act = 8
+            else:
+                act = 7
+        elif flag_up:
+            if flag_left:
+                act = 0
+            elif flag_right:
+                act = 2
+            else:
+                act = 1
+        do_action(act)
+        update_screen()
+        continue
+    old_x = car_x
+    old_y = car_y
+    old_velocity = velocity
+    old_angle = angle
+    old_polar_angle = polar_angle
+    q_values = []
+    for action in range(9):
+        do_action(action)
+        net_input = get_distances()
+        for i in range(len(net_input)):
+            net_input[i] *= 0.01
+        net_input.append(velocity)
+        net_output = net.get_output(net_input)
+        q_values.append(net_output[0])
+        car_x = old_x
+        car_y = old_y
+        velocity = old_velocity
+        angle = old_angle
+        polar_angle = old_polar_angle
+    max_q_ind = q_values.index(max(q_values))
+    update_checkpoints()
+    reward = 0
+    if prev_checkpoint != cur_checkpoint:
+        reward += 1
+        prev_checkpoint = cur_checkpoint
+    net_input = get_distances()
+    for i in range(len(net_input)):
+        net_input[i] *= 0.01
+    net_input.append(velocity)
+    if min(net_input[:-1]) == 0:
+        reward -= 1
+    if net_input[-1] <= 0:
+        reward -= 0.5
+    q_old = q_values[max_q_ind]
+    q_new = [(1 - net.learning_rate) * q_old + net.learning_rate * (reward + q_old)]
+    net.back_propagation(net_input, q_new)
+    q_new_new = net.get_output(net_input)
+    do_action(max_q_ind)
 
     if flag_up and not (flag_right or flag_left or flag_down):
         state_label = 'Gas'
@@ -254,32 +358,4 @@ while True:
         state_label = 'Left'
     if flag_down and not (flag_up or flag_left or flag_right):
         state_label = 'Break'
-
-    acceleration = get_acceleration()
-    velocity += acceleration
-    friction_mu = get_friction()
-    if velocity > 0:
-        velocity = max(velocity - friction_mu, 0)
-    elif velocity < 0:
-        velocity = min(velocity + friction_mu, 0)
-    if velocity == 0 and acceleration == 0:
-        state_label = 'Stop'
-    if velocity < 0:
-        state_label = 'Reverse'
-    velocity = max(min(max_velocity, velocity), min_velocity)
-
-    delta_angle = get_delta_angle()
-    polar_angle += delta_angle
-    angle += delta_angle
-    polar_angle_degree = polar_angle * math.pi / 180
-
-    car_x += velocity * math.sin(polar_angle_degree)
-    car_y += velocity * math.cos(polar_angle_degree)
-
-    if not (border_dx <= car_x <= screen_width - border_dx and border_dy <= car_y <= screen_height - border_dy):
-        velocity = 0
-        acceleration = 0
-        car_x = max(min(screen_width - border_dx, car_x), border_dx)
-        car_y = max(min(screen_height - border_dy, car_y), border_dy)
-
     update_screen()
