@@ -21,7 +21,7 @@ rectangle_width = int(100 * screen_scale)
 rectangle_height = int(30 * screen_scale)
 font_name = 'freesansbold.ttf'
 font_size = int(18 * screen_scale)
-checkpoints = [[(557, 120), (563, 200)], [(650, 81), (691, 147)], [(789, 76), (800, 170)],
+checkpoints = [[(557, 120), (563, 200)], [(650, 81), (691, 197)], [(789, 76), (800, 170)],
                [(902, 32), (925, 104)], [(1012, 18), (1000, 99)], [(1097, 124), (1017, 125)],
                [(1047, 214), (1017, 125)], [(943, 132), (935, 210)], [(802, 201), (883, 225)],
                [(804, 266), (880, 230)], [(877, 322), (958, 290)], [(868, 337), (935, 389)],
@@ -62,7 +62,6 @@ car_y = start_y
 angle = angle_start
 polar_angle = polar_angle_start
 velocity = 0
-acceleration = 0
 state_label = 'Stop'
 flag_up = False
 flag_down = False
@@ -96,7 +95,7 @@ def get_surface(x: float, y: float) -> str:
     color = scale_track.get_at((int(x), int(y)))
     if abs(color[0] - color[1]) < 5 and abs(color[0] - color[1]) < 5 and abs(color[0] - color[1]) < 5:
         return 'TRACK'
-    errors = [(col, sum([(color[i] - colors[col][i]) ** 2 for i in range(4)])) for col in colors]
+    errors = [(col, sum([(color[i_col] - colors[col][i_col]) ** 2 for i_col in range(4)])) for col in colors]
     return min(errors, key=lambda q: q[1])[0]
 
 
@@ -115,6 +114,7 @@ def get_friction() -> float:
 def get_distance_by_direction(dl: float, alpha: float) -> int:
     dist = 0
     max_dist = 500
+    alpha *= math.pi / 180
     x0 = car_x + dl * math.sin(alpha)
     y0 = car_y + dl * math.cos(alpha)
     while True:
@@ -135,20 +135,22 @@ def get_distances() -> list:
     car_a = 11
     car_b = 24
     car_c = math.sqrt(car_a * car_a + car_b * car_b)
-    alpha = math.atan(car_a / car_b)
-    left = get_distance_by_direction(car_a, polar_angle_degree + 90)
-    left_forward = get_distance_by_direction(car_c, polar_angle_degree + alpha)
-    forward = get_distance_by_direction(car_b, polar_angle_degree)
-    right_forward = get_distance_by_direction(car_c, polar_angle_degree - alpha)
-    right = get_distance_by_direction(car_a, polar_angle_degree - 90)
-    return [left, left_forward, forward, right_forward, right]
+    alpha = math.atan(car_a / car_b) * 180 / math.pi
+    left_backward = get_distance_by_direction(car_c, polar_angle + 180 - alpha)
+    left = get_distance_by_direction(car_a, polar_angle + 90)
+    left_forward = get_distance_by_direction(car_c, polar_angle + alpha)
+    forward = get_distance_by_direction(car_b, polar_angle)
+    right_forward = get_distance_by_direction(car_c, polar_angle - alpha)
+    right = get_distance_by_direction(car_a, polar_angle - 90)
+    right_backward = get_distance_by_direction(car_c, polar_angle - 180 + alpha)
+    return [left_backward, left, left_forward, forward, right_forward, right, right_backward]
 
 
 def update_checkpoints():
     global cur_checkpoint
     abc = checkpoints_eq_abc[cur_checkpoint]
-    x = car_x + 24 * math.sin(polar_angle_degree)
-    y = car_y + 24 * math.cos(polar_angle_degree)
+    x = car_x + 24 * math.sin(polar_angle * math.pi / 180)
+    y = car_y + 24 * math.cos(polar_angle * math.pi / 180)
     dist = abs(abc[0] * x + abc[1] * y + abc[2]) / math.sqrt(abc[0] * abc[0] + abc[1] * abc[1])
     x_0 = checkpoints[cur_checkpoint][0][0]
     y_0 = checkpoints[cur_checkpoint][0][1]
@@ -159,8 +161,8 @@ def update_checkpoints():
         cur_checkpoint += 1
         if cur_checkpoint == len(checkpoints):
             cur_checkpoint = 0
-            for i in range(len(checkpoints_colors)):
-                checkpoints_colors[i] = 'RED'
+            for i_cc in range(len(checkpoints_colors)):
+                checkpoints_colors[i_cc] = 'RED'
 
 
 def update_time(ticks: int) -> bool:
@@ -190,9 +192,9 @@ def update_screen():
     #    print(s)
     screen.blit(scale_track, (0, 0))
     update_checkpoints()
-    for i in range(len(checkpoints)):
-        chp = checkpoints[i]
-        pygame.draw.line(screen, screen_colors[checkpoints_colors[i]], chp[0], chp[1], 2)
+    for i_chp in range(len(checkpoints)):
+        chp = checkpoints[i_chp]
+        pygame.draw.line(screen, screen_colors[checkpoints_colors[i_chp]], chp[0], chp[1], 2)
     rot = pygame.transform.rotate(scale_car, angle)
     rot_rect = rot.get_rect(center=(int(car_x), int(car_y)))
     screen.blit(rot, rot_rect)
