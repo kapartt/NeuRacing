@@ -22,12 +22,12 @@ rectangle_width = int(100 * screen_scale)
 rectangle_height = int(30 * screen_scale)
 font_name = 'freesansbold.ttf'
 font_size = int(18 * screen_scale)
-checkpoints = [[(557, 120), (563, 200)], [(650, 81), (691, 197)], [(789, 76), (800, 170)],
+checkpoints = [[(557, 120), (563, 200)], [(650, 81), (691, 147)], [(789, 76), (800, 170)],
                [(902, 32), (925, 104)], [(1012, 18), (1000, 99)], [(1097, 124), (1017, 125)],
-               [(1047, 214), (1017, 125)], [(943, 132), (935, 210)], [(802, 201), (883, 225)],
+               [(1047, 214), (1017, 125)], [(943, 132), (935, 210)], [(827, 161), (883, 225)],
                [(804, 266), (880, 230)], [(877, 322), (958, 290)], [(868, 337), (935, 389)],
                [(834, 340), (838, 429)], [(715, 304), (672, 373)], [(597, 241), (558, 311)],
-               [(454, 232), (510, 299)], [(440, 355), (515, 310)], [(518, 420), (599, 392)],
+               [(484, 222), (510, 299)], [(430, 315), (515, 310)], [(518, 420), (599, 392)],
                [(528, 453), (596, 500)], [(507, 460), (462, 530)], [(407, 346), (347, 403)],
                [(264, 287), (258, 371)], [(148, 311), (128, 394)], [(82, 265), (5, 297)],
                [(88, 244), (17, 197)], [(110, 211), (67, 126)], [(114, 219), (180, 132)],
@@ -63,7 +63,6 @@ car_y = start_y
 angle = angle_start
 polar_angle = polar_angle_start
 velocity = 0
-state_label = 'Stop'
 flag_up = False
 flag_down = False
 flag_left = False
@@ -203,7 +202,7 @@ def update_screen():
     pygame.draw.rect(screen, colors['GRAY'], (screen_width - rectangle_width, screen_height - rectangle_height,
                                               rectangle_width, rectangle_height))
     font_state = pygame.font.Font(font_name, font_size)
-    text_state = font_state.render(state_label, True, colors['BLACK'])
+    text_state = font_state.render(get_state_label(), True, colors['BLACK'])
     text_state_rect = text_state.get_rect()
     text_state_rect.center = (screen_width - rectangle_width // 2, screen_height - rectangle_height // 2)
     screen.blit(text_state, text_state_rect)
@@ -228,7 +227,7 @@ def update_flags(x: int):
 
 
 def do_action(ac: int):
-    global velocity, polar_angle, angle, car_x, car_y, state_label
+    global velocity, polar_angle, angle, car_x, car_y
     update_flags(ac)
     acceleration = get_acceleration()
     velocity += acceleration
@@ -237,10 +236,6 @@ def do_action(ac: int):
         velocity = max(velocity - friction_mu, 0)
     elif velocity < 0:
         velocity = min(velocity + friction_mu, 0)
-    if velocity == 0 and acceleration == 0:
-        state_label = 'Stop'
-    if velocity < 0:
-        state_label = 'Reverse'
     velocity = max(min(max_velocity, velocity), min_velocity)
 
     delta_angle = get_delta_angle()
@@ -257,10 +252,37 @@ def do_action(ac: int):
         car_y = max(min(screen_height - border_dy, car_y), border_dy)
 
 
+def get_state_label() -> str:
+    state_label = 'Stop'
+    if flag_down:
+        state_label = 'Break'
+    elif flag_up:
+        state_label = 'Gas'
+    if flag_left:
+        state_label = 'Left'
+    elif flag_right:
+        state_label = 'Right'
+
+    if flag_up and not (flag_right or flag_left or flag_down):
+        state_label = 'Gas'
+    if flag_right and not (flag_up or flag_left or flag_down):
+        state_label = 'Right'
+    if flag_left and not (flag_right or flag_up or flag_down):
+        state_label = 'Left'
+    if flag_down and not (flag_up or flag_left or flag_right):
+        state_label = 'Break'
+    if velocity == 0 and not (flag_up or flag_down):
+        state_label = 'Stop'
+    if velocity < 0:
+        state_label = 'Reverse'
+    return state_label
+
+
 layers = tuple([4])
 net = nn.NeuralNetwork(layers=layers, input_sz=8, output_sz=1, bias=True)
 prev_checkpoint = 0
 is_human = False
+
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -269,16 +291,12 @@ while True:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
                 flag_up = True
-                state_label = 'Gas'
             if event.key == pygame.K_DOWN:
                 flag_down = True
-                state_label = 'Break'
             if event.key == pygame.K_LEFT:
                 flag_left = True
-                state_label = 'Left'
             if event.key == pygame.K_RIGHT:
                 flag_right = True
-                state_label = 'Right'
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_UP:
                 flag_up = False
@@ -308,54 +326,44 @@ while True:
                 act = 2
             else:
                 act = 1
-        do_action(act)
-        update_screen()
-        continue
-    old_x = car_x
-    old_y = car_y
-    old_velocity = velocity
-    old_angle = angle
-    old_polar_angle = polar_angle
-    q_values = []
-    for action in range(9):
-        do_action(action)
+    else:
+        old_x = car_x
+        old_y = car_y
+        old_velocity = velocity
+        old_angle = angle
+        old_polar_angle = polar_angle
+        q_values = []
+        for action in range(9):
+            do_action(action)
+            net_input = get_distances()
+            for i in range(len(net_input)):
+                net_input[i] *= 0.01
+            net_input.append(velocity)
+            net_output = net.get_output(net_input)
+            q_values.append(net_output[0])
+            car_x = old_x
+            car_y = old_y
+            velocity = old_velocity
+            angle = old_angle
+            polar_angle = old_polar_angle
+        act = q_values.index(max(q_values))
+        update_checkpoints()
+        reward = 0
+        if prev_checkpoint != cur_checkpoint:
+            reward += 1
+            prev_checkpoint = cur_checkpoint
         net_input = get_distances()
         for i in range(len(net_input)):
             net_input[i] *= 0.01
         net_input.append(velocity)
-        net_output = net.get_output(net_input)
-        q_values.append(net_output[0])
-        car_x = old_x
-        car_y = old_y
-        velocity = old_velocity
-        angle = old_angle
-        polar_angle = old_polar_angle
-    max_q_ind = q_values.index(max(q_values))
-    update_checkpoints()
-    reward = 0
-    if prev_checkpoint != cur_checkpoint:
-        reward += 1
-        prev_checkpoint = cur_checkpoint
-    net_input = get_distances()
-    for i in range(len(net_input)):
-        net_input[i] *= 0.01
-    net_input.append(velocity)
-    if min(net_input[:-1]) == 0:
-        reward -= 1
-    if net_input[-1] <= 0:
-        reward -= 0.5
-    q_old = q_values[max_q_ind]
-    q_new = [(1 - net.learning_rate) * q_old + net.learning_rate * (reward + q_old)]
-    net.back_propagation(net_input, q_new)
-    q_new_new = net.get_output(net_input)
-    do_action(max_q_ind)
+        if min(net_input[:-1]) == 0:
+            reward -= 1
+        if net_input[-1] <= 0:
+            reward -= 0.5
+        q_old = q_values[act]
+        q_new = [(1 - net.learning_rate) * q_old + net.learning_rate * (reward + q_old)]
+        net.back_propagation(net_input, q_new)
+        q_new_new = net.get_output(net_input)
 
-    if flag_up and not (flag_right or flag_left or flag_down):
-        state_label = 'Gas'
-    if flag_right and not (flag_up or flag_left or flag_down):
-        state_label = 'Right'
-    if flag_left and not (flag_right or flag_up or flag_down):
-        state_label = 'Left'
-    if flag_down and not (flag_up or flag_left or flag_right):
-        state_label = 'Break'
+    do_action(act)
     update_screen()
